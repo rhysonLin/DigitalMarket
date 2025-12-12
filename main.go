@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log"
 	"net/http"
+	"time"
 
 	"DigitalMarket/history"
 	"DigitalMarket/realtime"
@@ -13,49 +13,54 @@ import (
 func main() {
 	r := gin.Default()
 
-	// ========== 实时价格 ==========
-	priceStore := realtime.NewPriceStore("BTCUSDT")
-	priceStore.Start()
+	priceMgr := realtime.NewManager()
 
-	// GET /price
+	// 实时价格
 	r.GET("/price", func(c *gin.Context) {
-		price := priceStore.GetLatestPrice()
+		symbol := c.DefaultQuery("symbol", "BTCUSDT")
+		price := priceMgr.GetPrice(symbol)
+
 		if price == "" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "实时价格暂未获取到",
+				"error": "price not ready",
 			})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"symbol": "BTCUSDT",
+			"symbol": symbol,
 			"price":  price,
 		})
 	})
 
-	// ========== 最近一个月 K 线 ==========
-	// GET /klines?symbol=BTCUSDT
+	// 历史 K 线
 	r.GET("/klines", func(c *gin.Context) {
-		symbol := c.Query("symbol")
-		if symbol == "" {
-			symbol = "BTCUSDT"
+		symbol := c.DefaultQuery("symbol", "BTCUSDT")
+		interval := c.DefaultQuery("interval", "1h")
+
+		end := time.Now().UTC()
+		start := end.Add(-30 * 24 * time.Hour)
+
+		if s := c.Query("start"); s != "" {
+			start, _ = time.Parse("2006-01-02", s)
+		}
+		if e := c.Query("end"); e != "" {
+			end, _ = time.Parse("2006-01-02", e)
 		}
 
-		klines, err := history.GetLastMonthHourlyKlines(symbol)
+		klines, err := history.FetchKlines(symbol, interval, start, end)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"symbol":  symbol,
-			"count":   len(klines),
-			"interval": "1h",
-			"data":    klines,
+		c.JSON(200, gin.H{
+			"symbol":   symbol,
+			"interval": interval,
+			"count":    len(klines),
+			"data":     klines,
 		})
 	})
 
-	if err := r.Run(":8080"); err != nil {
-		log.Fatal(err)
-	}
+	r.Run(":8080")
 }
