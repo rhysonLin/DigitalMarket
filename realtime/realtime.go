@@ -45,9 +45,7 @@ type Manager struct {
 }
 
 func NewManager() *Manager {
-	return &Manager{
-		stores: make(map[string]*priceStore),
-	}
+	return &Manager{stores: make(map[string]*priceStore)}
 }
 
 func (m *Manager) GetPrice(symbol string) string {
